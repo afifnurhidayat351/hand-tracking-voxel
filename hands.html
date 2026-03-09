@@ -4,95 +4,132 @@
 <meta charset="utf-8">
 <title>AR Voxel Builder</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Share Tech Mono&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500&family=Azeret+Mono:wght@300;400&display=swap');
   *{margin:0;padding:0;box-sizing:border-box;}
   html,body{
     width:100%;height:100%;background:#000;overflow:hidden;
-    font-family:'Share Tech Mono',monospace;
+    font-family:'Azeret Mono',monospace;
     display:flex;align-items:center;justify-content:center;
   }
 
-  /* Fixed internal resolution, scaled up via CSS to fill window */
   #app{
     position:relative;
     width:640px;height:480px;
     transform-origin:center center;
   }
 
-  /* Canvas is the ONLY rendering surface — webcam drawn into it by MediaPipe */
   #canvas{
     position:absolute;inset:0;
     width:640px;height:480px;
-    display:block;
+    display:block;border-radius:2px;
   }
 
-  /* Hidden video — only used as MediaPipe source */
   #webcam{
     position:absolute;inset:0;
     opacity:0;pointer-events:none;
     width:640px;height:480px;
   }
 
-  #hud{position:absolute;top:12px;left:12px;pointer-events:none;z-index:10;}
-  .hl{font-size:12px;letter-spacing:2px;color:rgba(255,80,200,0.65);
-    text-shadow:0 0 8px rgba(255,80,200,0.3);line-height:2;}
-  .hl span{color:#fff;text-shadow:0 0 5px #fff;}
-
-  #ctrls{position:absolute;bottom:12px;right:12px;pointer-events:none;z-index:10;text-align:right;}
-  .ct{font-size:9px;letter-spacing:1.5px;color:rgba(255,80,200,0.35);line-height:2.1;}
-
-  #zoom-bar{
-    position:absolute;bottom:12px;left:12px;
+  /* ── MODE BADGE TOP RIGHT ── */
+  #mode-badge{
+    position:absolute;top:16px;right:16px;
     pointer-events:none;z-index:10;
-    display:flex;flex-direction:column;align-items:center;gap:4px;
+    background:rgba(0,0,0,0.5);
+    border:1px solid rgba(255,255,255,0.08);
+    backdrop-filter:blur(8px);
+    border-radius:20px;
+    padding:5px 14px;
+    font-size:10px;letter-spacing:3px;
+    color:rgba(255,255,255,0.5);
+    text-transform:uppercase;
+    transition:all 0.2s ease;
   }
-  .zl{font-size:9px;letter-spacing:2px;color:rgba(255,80,200,0.4);}
-  .ztrack{width:5px;height:70px;background:rgba(255,255,255,0.06);
-    border-radius:3px;position:relative;overflow:hidden;}
-  .zfill{position:absolute;bottom:0;width:100%;
-    background:linear-gradient(0deg,#ff44cc,#00ccff);
-    border-radius:3px;transition:height .12s ease;}
+  #mode-badge.building{
+    border-color:rgba(255,60,180,0.6);
+    color:#ff3cb4;
+    text-shadow:0 0 12px rgba(255,60,180,0.8);
+    box-shadow:0 0 20px rgba(255,60,180,0.15);
+  }
+  #mode-badge.rotating{
+    border-color:rgba(0,180,255,0.6);
+    color:#00b4ff;
+    text-shadow:0 0 12px rgba(0,180,255,0.8);
+    box-shadow:0 0 20px rgba(0,180,255,0.12);
+  }
+  #mode-badge.zooming{
+    border-color:rgba(0,230,180,0.6);
+    color:#00e6b4;
+    text-shadow:0 0 12px rgba(0,230,180,0.8);
+    box-shadow:0 0 20px rgba(0,230,180,0.12);
+  }
+  #mode-badge.deleting{
+    border-color:rgba(255,80,80,0.6);
+    color:#ff5050;
+    text-shadow:0 0 12px rgba(255,80,80,0.8);
+  }
 
+  /* ── LOADING SCREEN ── */
   #loading{
-    position:absolute;inset:0;background:#000;
+    position:absolute;inset:0;
+    background:#000;
     display:flex;flex-direction:column;align-items:center;
-    justify-content:center;gap:14px;z-index:100;transition:opacity .7s;
+    justify-content:center;gap:20px;z-index:100;
+    transition:opacity 0.8s ease;
   }
   #loading.done{opacity:0;pointer-events:none;}
-  #loading p{font-size:12px;letter-spacing:4px;color:#ff44cc;}
-  .ld{display:flex;gap:7px;}
-  .ld span{width:7px;height:7px;border-radius:50%;background:#ff44cc;animation:ldb 1s infinite;}
-  .ld span:nth-child(2){animation-delay:.18s}.ld span:nth-child(3){animation-delay:.36s}
-  @keyframes ldb{0%,80%,100%{opacity:.15;transform:scale(.7)}40%{opacity:1;transform:scale(1)}}
+  #loading-title{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:13px;font-weight:300;
+    letter-spacing:6px;color:rgba(255,255,255,0.5);
+    text-transform:uppercase;
+  }
+  #loading-sub{
+    font-size:9px;letter-spacing:3px;color:rgba(255,60,180,0.5);
+  }
+  .ld{display:flex;gap:6px;}
+  .ld span{
+    width:4px;height:4px;border-radius:50%;
+    background:#ff3cb4;animation:ldb 1.2s infinite ease-in-out;
+  }
+  .ld span:nth-child(2){animation-delay:.2s}
+  .ld span:nth-child(3){animation-delay:.4s}
+  @keyframes ldb{
+    0%,80%,100%{opacity:.1;transform:scale(0.6)}
+    40%{opacity:1;transform:scale(1)}
+  }
+
+  /* Scanline overlay */
+  #scanlines{
+    position:absolute;inset:0;pointer-events:none;z-index:5;
+    background:repeating-linear-gradient(
+      0deg,
+      transparent,transparent 2px,
+      rgba(0,0,0,0.04) 2px,rgba(0,0,0,0.04) 4px
+    );
+    border-radius:2px;
+  }
+  /* Vignette */
+  #vignette{
+    position:absolute;inset:0;pointer-events:none;z-index:6;
+    background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,0.65) 100%);
+    border-radius:2px;
+  }
 </style>
 </head>
 <body>
 <div id="app">
   <video id="webcam" playsinline autoplay muted></video>
   <canvas id="canvas" width="640" height="480"></canvas>
+  <div id="scanlines"></div>
+  <div id="vignette"></div>
 
-  <div id="hud">
-    <div class="hl">BLOCKS &nbsp;<span id="hb">0</span></div>
-    <div class="hl">LAYER &nbsp;&nbsp;<span id="hly">0</span></div>
-    <div class="hl">ZOOM &nbsp;&nbsp;&nbsp;<span id="hzo">1.0x</span></div>
-    <div class="hl">MODE &nbsp;&nbsp;&nbsp;<span id="hm">IDLE</span></div>
-  </div>
+  <!-- Mode badge -->
+  <div id="mode-badge">IDLE</div>
 
-  <div id="zoom-bar">
-    <div class="zl">ZOOM</div>
-    <div class="ztrack"><div class="zfill" id="zfill" style="height:30%"></div></div>
-  </div>
-
-  <div id="ctrls">
-    <div class="ct">☝ LEFT INDEX → AIM</div>
-    <div class="ct">🤏 PINCH + DRAG → BUILD</div>
-    <div class="ct">🤏 THUMB+MIDDLE → DELETE</div>
-    <div class="ct">✋ RIGHT PALM → ROTATE</div>
-    <div class="ct">🤲 BOTH HANDS SPREAD → ZOOM</div>
-  </div>
-
+  <!-- Loading -->
   <div id="loading">
-    <p>LOADING HAND TRACKING</p>
+    <div id="loading-title">AR Voxel Builder</div>
+    <div id="loading-sub">INITIALIZING HAND TRACKING</div>
     <div class="ld"><span></span><span></span><span></span></div>
   </div>
 </div>
@@ -101,49 +138,52 @@
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 <script>
-// ── Scale #app to fill window ─────────────────────
+// ── Scale to window ───────────────────────────────
 const appEl = document.getElementById('app');
 function scaleApp(){
-  const scaleX = window.innerWidth  / 640;
-  const scaleY = window.innerHeight / 480;
-  const scale  = Math.min(scaleX, scaleY);
-  appEl.style.transform = `scale(${scale})`;
+  const s = Math.min(window.innerWidth/640, window.innerHeight/480);
+  appEl.style.transform = `scale(${s})`;
 }
 scaleApp();
 window.addEventListener('resize', scaleApp);
 
-// ── Canvas & dims ─────────────────────────────────
+// ── Canvas ────────────────────────────────────────
 const video  = document.getElementById('webcam');
 const canvas = document.getElementById('canvas');
 const ctx    = canvas.getContext('2d');
 const W = 640, H = 480;
 
-// ── GRID ─────────────────────────────────────────
-const COLS=10, ROWS=10, LAYERS=6;
-const blocks=Array.from({length:LAYERS},()=>
+// ── GRID ──────────────────────────────────────────
+const COLS=8, ROWS=8, LAYERS=6;
+const blocks = Array.from({length:LAYERS},()=>
   Array.from({length:ROWS},()=>Array(COLS).fill(null)));
-const PALETTE=['#ff44cc','#ff2299','#cc00ff','#ff6600','#ff3355','#00ccff'];
-let blockCount=0;
+const PALETTE = ['#ff3cb4','#ff2299','#cc00ff','#ff6600','#ff3355','#00ccff'];
+let blockCount = 0;
 
 function setBlock(l,r,c){
-  if(l<0||l>=LAYERS||r<0||r>=ROWS||c<0||c>=COLS)return;
-  if(blocks[l][r][c])return;
-  blocks[l][r][c]=PALETTE[l%PALETTE.length];
-  document.getElementById('hb').textContent=++blockCount;
+  if(l<0||l>=LAYERS||r<0||r>=ROWS||c<0||c>=COLS||blocks[l][r][c])return;
+  blocks[l][r][c] = PALETTE[l%PALETTE.length];
 }
 function delBlock(l,r,c){
-  if(l<0||l>=LAYERS||r<0||r>=ROWS||c<0||c>=COLS)return;
-  if(!blocks[l][r][c])return;
-  blocks[l][r][c]=null;
-  document.getElementById('hb').textContent=Math.max(0,--blockCount);
+  if(l<0||l>=LAYERS||r<0||r>=ROWS||c<0||c>=COLS||!blocks[l][r][c])return;
+  blocks[l][r][c] = null;
 }
 
-// ── 3D PROJECTION ────────────────────────────────
+// ── 3D PROJECTION ─────────────────────────────────
 let tRotY=0.3, tRotX=0.42, cRotY=0.3, cRotX=0.42;
 let tZoomRaw=1.0, tZoom=1.0, cZoom=1.0;
-const ZOOM_MIN=0.3, ZOOM_MAX=3.5;
-const BASE_SCALE=34, PERSP=700;
-const ROT_LERP=0.10, ZOOM_LERP=0.08;
+const ZOOM_MIN=1.0, ZOOM_MAX=1.0;
+const BASE_SCALE=46, PERSP=700;
+
+// Smooth lerp speeds
+const ROT_LERP   = 0.085;   // rotation camera lerp (smoother = lower)
+const ZOOM_LERP  = 0.07;    // zoom camera lerp
+const TZOOM_LERP = 0.06;    // target zoom lerp
+
+// Rotation physics — tuned for fluidity
+const ROT_SENS      = 2.8;   // sensitivity (lower = less jumpy)
+const ROT_FRICTION  = 0.90;  // inertia friction (higher = floatier)
+const ROT_MIN_VEL   = 0.0003;
 
 function proj(wx,wy,wz){
   const cy=Math.cos(cRotY),sy=Math.sin(cRotY);
@@ -176,12 +216,12 @@ function drawFace(pts,color,bright,alpha){
   ctx.moveTo(pts[0].x,pts[0].y);
   for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i].x,pts[i].y);
   ctx.closePath();
-  ctx.fillStyle=`rgba(${r*bright|0},${g*bright|0},${b*bright|0},${alpha*0.14})`;
+  ctx.fillStyle=`rgba(${r*bright|0},${g*bright|0},${b*bright|0},${alpha*0.13})`;
   ctx.fill();
-  ctx.strokeStyle=`rgba(${r},${g},${b},${alpha*0.92})`;
-  ctx.lineWidth=1.4;
+  ctx.strokeStyle=`rgba(${r},${g},${b},${alpha*0.9})`;
+  ctx.lineWidth=1.3;
   ctx.shadowColor=color;
-  ctx.shadowBlur=alpha<0.6?5:11;
+  ctx.shadowBlur=alpha<0.6?4:9;
   ctx.stroke();
 }
 
@@ -199,9 +239,9 @@ function vDepth(c,l,r){return proj(c-COLS/2+0.5,l,r-ROWS/2+0.5).depth;}
 
 function drawFloor(layer){
   const hC=COLS/2,hR=ROWS/2,wy=layer;
-  ctx.save();ctx.globalAlpha=0.09;
+  ctx.save();ctx.globalAlpha=0.08;
   ctx.strokeStyle=PALETTE[layer%PALETTE.length];
-  ctx.lineWidth=0.6;ctx.shadowColor=PALETTE[layer%PALETTE.length];ctx.shadowBlur=3;
+  ctx.lineWidth=0.5;ctx.shadowColor=PALETTE[layer%PALETTE.length];ctx.shadowBlur=2;
   for(let c=0;c<=COLS;c++){
     const p0=proj(c-hC,wy,-hR),p1=proj(c-hC,wy,hR);
     ctx.beginPath();ctx.moveTo(p0.x,p0.y);ctx.lineTo(p1.x,p1.y);ctx.stroke();
@@ -213,31 +253,31 @@ function drawFloor(layer){
   ctx.restore();
 }
 
-// ── SKELETON ─────────────────────────────────────
+// ── SKELETON ──────────────────────────────────────
 let HC=null;
 function drawSkeleton(lm,isRight){
   if(!HC)return;
   const mx=x=>(1-x)*W, my=y=>y*H;
   ctx.save();
-  ctx.strokeStyle=isRight?'#00aaff':'#ff44cc';
-  ctx.lineWidth=1;ctx.globalAlpha=0.45;
-  ctx.shadowColor=isRight?'#00aaff':'#ff44cc';ctx.shadowBlur=4;
+  ctx.strokeStyle=isRight?'#0099ff':'#ff3cb4';
+  ctx.lineWidth=1;ctx.globalAlpha=0.35;
+  ctx.shadowColor=isRight?'#0099ff':'#ff3cb4';ctx.shadowBlur=3;
   HC.forEach(([a,b])=>{
     ctx.beginPath();ctx.moveTo(mx(lm[a].x),my(lm[a].y));
     ctx.lineTo(mx(lm[b].x),my(lm[b].y));ctx.stroke();
   });
   lm.forEach((p,i)=>{
     const key=i===4||i===8||i===12;
-    ctx.beginPath();ctx.arc(mx(p.x),my(p.y),key?3:1.5,0,Math.PI*2);
+    ctx.beginPath();ctx.arc(mx(p.x),my(p.y),key?2.5:1.2,0,Math.PI*2);
     ctx.fillStyle=key?'#fff':(isRight?'#55aaff':'#ff88dd');
-    ctx.globalAlpha=key?0.9:0.3;ctx.shadowBlur=key?10:3;
+    ctx.globalAlpha=key?0.8:0.25;ctx.shadowBlur=key?8:2;
     ctx.fill();
   });
   ctx.restore();
 }
 
-// ── UNPROJECT ────────────────────────────────────
-function screenToGrid(sx,sy,layer){
+// ── UNPROJECT ─────────────────────────────────────
+function screenToGrid(sx,sy,layer,snapDist){
   let best=null,bd=Infinity;
   for(let r=0;r<ROWS;r++){
     for(let c=0;c<COLS;c++){
@@ -246,10 +286,10 @@ function screenToGrid(sx,sy,layer){
       if(d<bd){bd=d;best={col:c,row:r};}
     }
   }
-  return bd<55*cZoom?best:null;
+  return bd<snapDist?best:null;
 }
 
-// ── ZOOM RING ─────────────────────────────────────
+// ── ZOOM RING ──────────────────────────────────────
 function drawZoomRing(lmL,lmR){
   const mx=x=>(1-x)*W,my=y=>y*H;
   const ax=mx(lmL[9].x),ay=my(lmL[9].y);
@@ -257,56 +297,91 @@ function drawZoomRing(lmL,lmR){
   const midX=(ax+bx)/2,midY=(ay+by)/2;
   const d=Math.hypot(bx-ax,by-ay);
   ctx.save();
-  ctx.setLineDash([4,6]);
-  ctx.strokeStyle='rgba(0,220,255,0.45)';
-  ctx.lineWidth=1.5;ctx.shadowColor='#00ccff';ctx.shadowBlur=8;
+  // Line between hands
+  ctx.setLineDash([3,7]);
+  ctx.strokeStyle='rgba(0,230,180,0.4)';
+  ctx.lineWidth=1;ctx.shadowColor='#00e6b4';ctx.shadowBlur=6;
   ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(bx,by);ctx.stroke();
   ctx.setLineDash([]);
-  ctx.strokeStyle='rgba(0,220,255,0.28)';ctx.lineWidth=1;
+  // Circle
+  ctx.strokeStyle='rgba(0,230,180,0.18)';ctx.lineWidth=1;
   ctx.beginPath();ctx.arc(midX,midY,d/2,0,Math.PI*2);ctx.stroke();
-  ctx.font='10px Share Tech Mono';ctx.fillStyle='rgba(0,220,255,0.7)';
-  ctx.textAlign='center';
-  ctx.fillText(`${cZoom.toFixed(1)}x`,midX,midY-8);
+  // Label
+  ctx.font='9px Azeret Mono';ctx.fillStyle='rgba(0,230,180,0.65)';
+  ctx.textAlign='center';ctx.shadowBlur=0;
+  ctx.fillText(cZoom.toFixed(1)+'×',midX,midY+3);
   ctx.restore();
 }
 
+// ── ROTATION SMOOTHING ─────────────────────────────
+// Multi-sample velocity averaging for buttery rotation
+const VEL_SAMPLES = 5;
+let velBufY = Array(VEL_SAMPLES).fill(0);
+let velBufX = Array(VEL_SAMPLES).fill(0);
+let velIdx = 0;
+let rotVelY=0, rotVelX=0;
+
+function pushVel(vy,vx){
+  velBufY[velIdx]=vy; velBufX[velIdx]=vx;
+  velIdx=(velIdx+1)%VEL_SAMPLES;
+  rotVelY=velBufY.reduce((a,b)=>a+b,0)/VEL_SAMPLES;
+  rotVelX=velBufX.reduce((a,b)=>a+b,0)/VEL_SAMPLES;
+}
+
+function clearVel(){
+  velBufY.fill(0); velBufX.fill(0);
+  rotVelY=0; rotVelX=0;
+}
+
 // ── STATE ─────────────────────────────────────────
-let lastImage=null,lastLMs=[];
+let lastLMs=[];
 let hoverCol=-1,hoverRow=-1,hoverLayer=0;
 let fingerX=-1,fingerY=-1,pinchPct=0;
 let sIX=0.5,sIY=0.5;
-const SM=0.22;
+const SM_AIM  = 0.35; // fast when just aiming
+const SM_BUILD = 0.12; // stable when building
+
+// Pinch hysteresis: separate enter/exit thresholds to avoid flickering
+const PINCH_ENTER = 0.050; // must be THIS close to start building
+const PINCH_EXIT  = 0.075; // must be THIS far to stop building
+let isPinched = false;
 
 let isDrag=false,lastBC=-1,lastBR=-1,lastBL=-1;
+// Cell lock: while dragging, snap threshold tightened so cursor doesn't jump cells
+const SNAP_DIST_IDLE = 72;  // generous snap when aiming
+const SNAP_DIST_DRAG = 42;  // tighter when building
 let delLocked=false,lastDel=0;
 
 let rPrevX=null,rPrevY=null;
-let rotVelY=0,rotVelX=0;
-const ROT_SENS=3.5,ROT_FRICTION=0.88;
 
-let zoomActive=false,zoomBaseDist=null,zoomBaseVal=1.0,zoomDeadPassed=false;
-const ZOOM_DEADBAND=0.04;
+let zoomActive=false;
 let lmLeft=null,lmRight=null;
 
 function dist2D(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
-function twoHandDist(lL,lR){return Math.hypot(lL[9].x-lR[9].x,lL[9].y-lR[9].y);}
 
-// ── MAIN DRAW — called from onResults with results.image ──
+// ── MODE BADGE ────────────────────────────────────
+function setMode(text,cls){
+  const el=document.getElementById('mode-badge');
+  el.textContent=text;
+  el.className='';
+  if(cls)el.classList.add(cls);
+}
+
+// ── MAIN DRAW ─────────────────────────────────────
 function draw(camImage){
   ctx.clearRect(0,0,W,H);
 
-  // Draw mirrored camera feed directly — same as original code
   ctx.save();
   ctx.translate(W,0);ctx.scale(-1,1);
   ctx.drawImage(camImage,0,0,W,H);
   ctx.restore();
 
-  // Dark overlay
-  ctx.fillStyle='rgba(0,0,8,0.38)';ctx.fillRect(0,0,W,H);
+  // Overlay
+  ctx.fillStyle='rgba(0,0,10,0.35)';ctx.fillRect(0,0,W,H);
 
   drawFloor(hoverLayer);
 
-  // Sort + draw voxels
+  // Voxels
   const list=[];
   for(let l=0;l<LAYERS;l++)
     for(let r=0;r<ROWS;r++)
@@ -315,67 +390,90 @@ function draw(camImage){
   list.sort((a,b)=>b.d-a.d);
   list.forEach(v=>drawCube(v.c,v.l,v.r,v.color));
 
-  // Ghost hover block
+  // Ghost / aim highlight
   if(hoverCol>=0&&hoverRow>=0){
-    const pulse=0.28+0.2*Math.sin(Date.now()*0.006);
-    drawCube(hoverCol,hoverLayer,hoverRow,'#ffffff',pulse);
+    if(isPinched){
+      // Building — subtle white pulse
+      const pulse=0.22+0.16*Math.sin(Date.now()*0.005);
+      drawCube(hoverCol,hoverLayer,hoverRow,'#ffffff',pulse);
+    } else {
+      // Aiming — bright colored outline, more visible
+      const aimColor = PALETTE[hoverLayer%PALETTE.length];
+      const pulse = 0.55 + 0.25*Math.sin(Date.now()*0.007);
+      drawCube(hoverCol,hoverLayer,hoverRow,aimColor,pulse);
+      // Extra corner dots at top face corners for precision feel
+      const c = cubeCorners(hoverCol,hoverLayer,hoverRow);
+      ctx.save();
+      ctx.fillStyle=aimColor;
+      ctx.shadowColor=aimColor;ctx.shadowBlur=14;
+      ctx.globalAlpha=0.9;
+      [4,5,6,7].forEach(i=>{
+        ctx.beginPath();ctx.arc(c[i].x,c[i].y,2.5,0,Math.PI*2);ctx.fill();
+      });
+      ctx.restore();
+    }
   }
 
-  // Skeletons always on top
   lastLMs.forEach(({lm,isRight})=>drawSkeleton(lm,isRight));
 
-  // Zoom ring
   if(zoomActive&&lmLeft&&lmRight)drawZoomRing(lmLeft,lmRight);
 
-  // Finger cursor
+  // Cursor
   if(fingerX>0&&!zoomActive){
     ctx.save();
-    ctx.shadowColor='#fff';ctx.shadowBlur=16;
-    ctx.fillStyle='#fff';
-    ctx.beginPath();ctx.arc(fingerX,fingerY,5,0,Math.PI*2);ctx.fill();
-    ctx.globalAlpha=0.28;ctx.strokeStyle='#fff';ctx.lineWidth=1;
-    ctx.beginPath();ctx.moveTo(fingerX-14,fingerY);ctx.lineTo(fingerX+14,fingerY);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(fingerX,fingerY-14);ctx.lineTo(fingerX,fingerY+14);ctx.stroke();
+    ctx.shadowColor='rgba(255,255,255,0.6)';ctx.shadowBlur=12;
+    ctx.fillStyle='rgba(255,255,255,0.9)';
+    ctx.beginPath();ctx.arc(fingerX,fingerY,4,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=0.2;ctx.strokeStyle='#fff';ctx.lineWidth=1;
+    ctx.shadowBlur=0;
+    ctx.beginPath();ctx.moveTo(fingerX-12,fingerY);ctx.lineTo(fingerX+12,fingerY);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(fingerX,fingerY-12);ctx.lineTo(fingerX,fingerY+12);ctx.stroke();
     ctx.restore();
+
+    // Pinch ring
     if(pinchPct>0){
       ctx.save();
-      ctx.strokeStyle=PALETTE[hoverLayer];ctx.lineWidth=1.8;
-      ctx.globalAlpha=pinchPct*0.85;
-      ctx.shadowColor=PALETTE[hoverLayer];ctx.shadowBlur=18;
-      ctx.beginPath();ctx.arc(fingerX,fingerY,20+(1-pinchPct)*10,0,Math.PI*2);ctx.stroke();
+      ctx.strokeStyle=PALETTE[hoverLayer];ctx.lineWidth=1.5;
+      ctx.globalAlpha=pinchPct*0.8;
+      ctx.shadowColor=PALETTE[hoverLayer];ctx.shadowBlur=14;
+      ctx.beginPath();ctx.arc(fingerX,fingerY,18+(1-pinchPct)*10,0,Math.PI*2);ctx.stroke();
       ctx.restore();
     }
   }
 }
 
-// ── ANIM LOOP — only for smooth lerp, draw triggered by MediaPipe ──
+// ── ANIMATION LOOP ─────────────────────────────────
 function loop(){
   requestAnimationFrame(loop);
-  cRotY+=(tRotY-cRotY)*ROT_LERP;
-  cRotX+=(tRotX-cRotX)*ROT_LERP;
-  tZoom+=(tZoomRaw-tZoom)*0.06;
-  cZoom+=(tZoom-cZoom)*ZOOM_LERP;
+
+  // Smooth camera rotation
+  cRotY += (tRotY-cRotY)*ROT_LERP;
+  cRotX += (tRotX-cRotX)*ROT_LERP;
+
+  // Smooth zoom (two-stage) — kept at 1.0 fixed
+  tZoom  += (tZoomRaw-tZoom)*TZOOM_LERP;
+  cZoom  += (tZoom-cZoom)*ZOOM_LERP;  // Apply inertia only when not actively tracking
   if(!rPrevX){
-    tRotY+=rotVelY;tRotX+=rotVelX;
-    tRotX=Math.max(0.05,Math.min(1.3,tRotX));
-    rotVelY*=ROT_FRICTION;rotVelX*=ROT_FRICTION;
-    if(Math.abs(rotVelY)<0.0005)rotVelY=0;
-    if(Math.abs(rotVelX)<0.0005)rotVelX=0;
+    tRotY += rotVelY;
+    tRotX += rotVelX;
+    tRotX = Math.max(0.05,Math.min(1.3,tRotX));
+    rotVelY *= ROT_FRICTION;
+    rotVelX *= ROT_FRICTION;
+    if(Math.abs(rotVelY)<ROT_MIN_VEL)rotVelY=0;
+    if(Math.abs(rotVelX)<ROT_MIN_VEL)rotVelX=0;
   }
-  document.getElementById('hzo').textContent=cZoom.toFixed(1)+'x';
-  const zPct=((cZoom-ZOOM_MIN)/(ZOOM_MAX-ZOOM_MIN))*100;
-  document.getElementById('zfill').style.height=Math.max(4,Math.min(100,zPct))+'%';
+
 }
 loop();
 
-// ── MEDIAPIPE CALLBACK ────────────────────────────
+// ── MEDIAPIPE CALLBACK ─────────────────────────────
 function onResults(res){
   document.getElementById('loading').classList.add('done');
   if(!HC&&typeof HAND_CONNECTIONS!=='undefined')HC=HAND_CONNECTIONS;
 
   lastLMs=[];fingerX=-1;fingerY=-1;pinchPct=0;
   lmLeft=null;lmRight=null;
-  let mode='IDLE',rightSeen=false;
+  let mode='IDLE',modeClass='',rightSeen=false;
 
   if(res.multiHandLandmarks&&res.multiHandedness){
     for(let i=0;i<res.multiHandLandmarks.length;i++){
@@ -386,91 +484,113 @@ function onResults(res){
     }
 
     if(lmLeft&&lmRight){
-      // ── ZOOM MODE ──
-      zoomActive=true;
-      const d=twoHandDist(lmLeft,lmRight);
-      if(zoomBaseDist===null){
-        zoomBaseDist=d;zoomBaseVal=tZoomRaw;zoomDeadPassed=false;
-      } else {
-        const delta=d-zoomBaseDist;
-        if(!zoomDeadPassed&&Math.abs(delta)>ZOOM_DEADBAND)zoomDeadPassed=true;
-        if(zoomDeadPassed){
-          const ratio=d/zoomBaseDist;
-          const dampedRatio=1+(ratio-1)*0.55;
-          tZoomRaw=Math.max(ZOOM_MIN,Math.min(ZOOM_MAX,zoomBaseVal*dampedRatio));
-        }
-      }
-      rPrevX=null;rotVelY=0;rotVelX=0;
-      mode='🔍 ZOOM';
-
-    } else {
-      if(zoomActive){zoomBaseDist=null;zoomDeadPassed=false;zoomBaseVal=tZoomRaw;}
+      // Both hands visible — just rotate with right, build with left simultaneously
       zoomActive=false;
+      rPrevX=null;clearVel();
+      // fall through to handle each hand below
+    }
 
+    if(!lmLeft||!lmRight){
+      zoomActive=false;
+    }
+
+      // ── RIGHT HAND = ROTATE ──
       if(lmRight){
         rightSeen=true;
-        const palmX=lmRight[9].x,palmY=lmRight[9].y;
+        const palmX=lmRight[9].x, palmY=lmRight[9].y;
         if(rPrevX!==null){
-          const dx=palmX-rPrevX,dy=palmY-rPrevY;
-          if(Math.abs(dx)>0.005||Math.abs(dy)>0.005){
-            rotVelY=-dx*ROT_SENS;rotVelX=dy*ROT_SENS;
-            tRotY+=rotVelY;tRotX+=rotVelX;
+          const dx=palmX-rPrevX, dy=palmY-rPrevY;
+          if(Math.abs(dx)>0.003||Math.abs(dy)>0.003){
+            const vy=-dx*ROT_SENS;
+            const vx= dy*ROT_SENS;
+            pushVel(vy,vx);
+            tRotY+=vy;
+            tRotX+=vx;
             tRotX=Math.max(0.05,Math.min(1.3,tRotX));
+          } else {
+            // Hand still — gradually zero out buffer
+            pushVel(0,0);
           }
         }
         rPrevX=palmX;rPrevY=palmY;
-        mode='ROTATE';
+        mode='ROTATE';modeClass='rotating';
       }
 
+      // ── LEFT HAND = BUILD/DELETE ──
       if(lmLeft){
         const lm=lmLeft;
         const thumb=lm[4],idx8=lm[8],mid=lm[12],wrist=lm[0];
-        const dBuild=dist2D(thumb,idx8),dDel=dist2D(thumb,mid);
+        const dBuild=dist2D(thumb,idx8), dDel=dist2D(thumb,mid);
         const now=Date.now();
 
-        sIX+=(idx8.x-sIX)*SM;sIY+=(idx8.y-sIY)*SM;
+        // Adaptive smoothing: fast when aiming, stable when building
+        const sm = isPinched ? SM_BUILD : SM_AIM;
+        sIX+=(idx8.x-sIX)*sm;sIY+=(idx8.y-sIY)*sm;
         fingerX=(1-sIX)*W;fingerY=sIY*H;
         pinchPct=Math.max(0,Math.min(1,1-dBuild/0.12));
 
         hoverLayer=Math.round((1-wrist.y)*(LAYERS-1));
         hoverLayer=Math.max(0,Math.min(LAYERS-1,hoverLayer));
-        document.getElementById('hly').textContent=hoverLayer;
 
-        const cell=screenToGrid(fingerX,fingerY,hoverLayer);
-        if(cell){hoverCol=cell.col;hoverRow=cell.row;}
-        else{hoverCol=-1;hoverRow=-1;}
+        // Pinch hysteresis — prevents flickering in/out of build mode
+        if(!isPinched && dBuild < PINCH_ENTER) isPinched = true;
+        if( isPinched && dBuild > PINCH_EXIT)  isPinched = false;
 
-        if(dBuild<0.055){
+        // Bigger snap when aiming so cell highlights feel snappy
+        const snapDist = isPinched ? SNAP_DIST_DRAG : SNAP_DIST_IDLE;
+        const cell = screenToGrid(fingerX,fingerY,hoverLayer,snapDist);
+
+        // Only update hover when not mid-drag, or if clearly in a new cell
+        if(cell){
+          if(!isPinched){
+            hoverCol=cell.col;hoverRow=cell.row;
+          } else if(hoverCol<0){
+            // First cell on drag start
+            hoverCol=cell.col;hoverRow=cell.row;
+          }
+          // While dragging: only move to adjacent cell (prevent teleporting)
+          else if(Math.abs(cell.col-hoverCol)<=1&&Math.abs(cell.row-hoverRow)<=1){
+            hoverCol=cell.col;hoverRow=cell.row;
+          }
+        } else if(!isPinched){
+          hoverCol=-1;hoverRow=-1;
+        }
+
+        if(isPinched){
           isDrag=true;
           if(hoverCol>=0&&hoverRow>=0&&
             (hoverCol!==lastBC||hoverRow!==lastBR||hoverLayer!==lastBL)){
             setBlock(hoverLayer,hoverRow,hoverCol);
             lastBC=hoverCol;lastBR=hoverRow;lastBL=hoverLayer;
           }
-          mode='⬛ BUILDING';
-        }else{isDrag=false;lastBC=-1;lastBR=-1;lastBL=-1;}
+          mode='BUILD';modeClass='building';
+        } else {
+          isDrag=false;lastBC=-1;lastBR=-1;lastBL=-1;
+        }
 
         if(dDel<0.05&&!delLocked&&now-lastDel>320){
           if(hoverCol>=0&&hoverRow>=0)delBlock(hoverLayer,hoverRow,hoverCol);
-          lastDel=now;delLocked=true;mode='✕ DELETED';
-        }else if(dDel>=0.06)delLocked=false;
+          lastDel=now;delLocked=true;
+          mode='DELETE';modeClass='deleting';
+        } else if(dDel>=0.06)delLocked=false;
 
-        if(mode==='IDLE')mode=dBuild<0.09?'PINCHING…':'AIM';
+        if(mode==='IDLE'){
+          if(dBuild<0.09){mode='PINCH…';modeClass='';}
+          else{mode='AIM';modeClass='';}
+        }
       }
-    }
-  }else{
+
+  } else {
     hoverCol=-1;hoverRow=-1;isDrag=false;
-    zoomActive=false;zoomBaseDist=null;zoomDeadPassed=false;
+    zoomActive=false;isPinched=false;
   }
 
-  if(!rightSeen&&!zoomActive)rPrevX=null;
-  document.getElementById('hm').textContent=mode;
-
-  // Draw with the fresh camera frame from MediaPipe — exactly like original
+  if(!rightSeen&&!zoomActive){rPrevX=null;clearVel();}
+  setMode(mode,modeClass);
   draw(res.image);
 }
 
-// ── MEDIAPIPE INIT ────────────────────────────────
+// ── MEDIAPIPE INIT ─────────────────────────────────
 const hands=new Hands({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
 hands.setOptions({
   selfieMode:true,maxNumHands:2,modelComplexity:1,
